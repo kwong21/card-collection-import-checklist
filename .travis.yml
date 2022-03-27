@@ -4,6 +4,11 @@ go:
 - 1.16.x
 - master
 
+env:
+  global: 
+  - GOOGLE_PROJECT_ID=test
+  - FIRESTORE_EMULATOR_HOST=localhost:8080
+
 jobs:
   include:
     - stage: "Tests"
