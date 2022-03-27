@@ -13,7 +13,8 @@ jobs:
   include:
     - stage: "Tests"
       name: "Unit Tests"
-      script: go test .
+      script: go test -v function_test.go function.go
+      
     - name: "Integration Tests"
       before_script: curl -sL https://firebase.tools | bash
       script: firebase emulators:exec './run_integration_test.sh'
