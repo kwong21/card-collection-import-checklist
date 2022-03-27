@@ -1,9 +1,16 @@
-package importer
+package function
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strings"
 
+	"cloud.google.com/go/firestore"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -24,7 +31,8 @@ const (
 )
 
 type PubSubMessage struct {
-	Data []byte `json:"data"`
+	Data       []byte            `json:"data"`
+	Attributes map[string]string `json:"attributes"`
 }
 
 type Card struct {
@@ -41,10 +49,57 @@ type Card struct {
 	Point      string
 }
 
-func ImportCheckList(ctx context.Context, m PubSubMessage) error {
-	//checklistFile := string(m.Data)
+type SubsetCards struct {
+	Cards []Card
+}
+
+func ImportChecklist(ctx context.Context, m PubSubMessage) error {
+	league := m.Attributes["league"]
+	checklistUrl := m.Attributes["checklistUrl"]
+	setName := m.Attributes["set"]
+
+	fileExtension := strings.Split(checklistUrl, ".")[1]
+
+	target := fmt.Sprintf("/tmp/%s.%s", setName, fileExtension)
+	err := downloadFile(target, checklistUrl)
+
+	if err != nil {
+		return err
+	}
+
+	checklistData, err := parseChecklist(target)
+
+	if err != nil {
+		return err
+	}
+
+	err = writeToFirestore(league, setName, checklistData)
+
+	if err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func downloadFile(target string, url string) error {
+	resp, err := http.Get(url)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(target)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+
+	return err
 }
 
 func parseChecklist(f string) (map[string][]Card, error) {
@@ -69,7 +124,7 @@ func parseChecklist(f string) (map[string][]Card, error) {
 
 	for rows.Next() {
 		columns, _ := rows.Columns()
-		collectedRows = append(collectedRows, trimSliceSpace(columns))
+		collectedRows = append(collectedRows, columns)
 	}
 
 	m := mapRowsToStruct(collectedRows)
@@ -123,13 +178,30 @@ func mapRowsToStruct(rows [][]string) map[string][]Card {
 	return m
 }
 
-func trimSliceSpace(s []string) []string {
-	for {
-		if len(s) > 0 && s[len(s)-1] == "" {
-			s = s[:len(s)-1]
-		} else {
-			break
+func writeToFirestore(league string, set string, data map[string][]Card) error {
+	ctx := context.TODO()
+	firestoreClient, err := firestore.NewClient(ctx, os.Getenv("GOOGLE_PROJECT_ID"))
+
+	if err != nil {
+		return err
+	}
+	defer firestoreClient.Close()
+
+	failed := false
+	leagueCollection := firestoreClient.Collection(league)
+	for subset, cards := range data {
+		checklist := leagueCollection.Doc(set).Collection(subset).Doc("checklist")
+		_, err := checklist.Create(ctx, SubsetCards{Cards: cards})
+
+		if err != nil {
+			fmt.Println(err)
+			failed = true
 		}
 	}
-	return s
+
+	if failed {
+		return errors.New("encountered a problem when writing to firestore")
+	}
+
+	return nil
 }

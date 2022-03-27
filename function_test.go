@@ -1,4 +1,4 @@
-package importer
+package function
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestReadExcelIntoStruct(t *testing.T) {
+func TestParseChecklist(t *testing.T) {
 	actual, err := parseChecklist("test_data.xlsx")
 
 	if assert.NoError(t, err) {
@@ -19,7 +19,12 @@ func TestReadExcelIntoStruct(t *testing.T) {
 		assert.Equal(t, 3, len(sets))
 
 		rookieBaseSet := actual["Base Set - Rookies"]
-
 		assert.Equal(t, 10, len(rookieBaseSet))
+
+		winterStormGoldAutoParallel := actual["Winter Storm Warning Golden Treasure Auto Parallel"]
+		card := winterStormGoldAutoParallel[10]
+
+		assert.Equal(t, "Bo Horvat", card.Player)
+		assert.True(t, card.HasAuto)
 	}
 }
