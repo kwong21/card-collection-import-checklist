@@ -1,8 +1,8 @@
 language: go
+script: true 
 
 go:
 - 1.16.x
-- master
 
 env:
   global: 
@@ -14,7 +14,7 @@ jobs:
     - stage: "Tests"
       name: "Unit Tests"
       script: go test -v function_test.go function.go
-      
+
     - name: "Integration Tests"
       before_script: curl -sL https://firebase.tools | bash
       script: firebase emulators:exec './run_integration_test.sh'
